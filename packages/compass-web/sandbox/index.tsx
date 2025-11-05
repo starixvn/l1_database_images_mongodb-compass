@@ -1,23 +1,17 @@
-import React, { useCallback, useLayoutEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
-import {
-  resetGlobalCSS,
-  css,
-  Body,
-  openToast,
-} from '@mongodb-js/compass-components';
+import { Body, css, openToast, resetGlobalCSS } from '@mongodb-js/compass-components';
 import type { AllPreferences } from 'compass-preferences-model';
-import { CompassWeb } from '../src/index';
+import React, { useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { SandboxConnectionStorageProvider } from '../src/connection-storage';
-import { sandboxLogger } from './sandbox-logger';
-import { sandboxTelemetry } from './sandbox-telemetry';
-import { useAtlasProxySignIn } from './sandbox-atlas-sign-in';
-import { sandboxConnectionStorage } from './sandbox-connection-storage';
-import { useWorkspaceTabRouter } from './sandbox-workspace-tab-router';
+import { CompassWeb } from '../src/index';
 import {
   SandboxPreferencesUpdateProvider,
   type SandboxPreferencesUpdateTrigger,
 } from '../src/preferences';
+import { sandboxConnectionStorage } from './sandbox-connection-storage';
+import { sandboxLogger } from './sandbox-logger';
+import { sandboxTelemetry } from './sandbox-telemetry';
+import { useWorkspaceTabRouter } from './sandbox-workspace-tab-router';
 
 const sandboxContainerStyles = css({
   width: '100%',
@@ -40,25 +34,8 @@ function getMetaEl(name: string) {
 
 const App = () => {
   const [currentTab, updateCurrentTab] = useWorkspaceTabRouter();
-  const { status, projectParams } = useAtlasProxySignIn();
-  const {
-    projectId,
-    csrfToken,
-    csrfTime,
-    enableGenAIFeaturesAtlasProject,
-    enableGenAISampleDocumentPassingOnAtlasProject,
-    enableGenAIFeaturesAtlasOrg,
-    optInGenAIFeatures,
-  } = projectParams ?? {};
 
-  const atlasServiceSandboxBackendVariant =
-    process.env.COMPASS_WEB_HTTP_PROXY_CLOUD_CONFIG === 'local'
-      ? 'web-sandbox-atlas-local'
-      : process.env.COMPASS_WEB_HTTP_PROXY_CLOUD_CONFIG === 'dev'
-      ? 'web-sandbox-atlas-dev'
-      : process.env.COMPASS_WEB_HTTP_PROXY_CLOUD_CONFIG === 'qa'
-      ? 'web-sandbox-atlas-qa'
-      : 'web-sandbox-atlas';
+  const atlasServiceSandboxBackendVariant = 'web-sandbox-atlas';
 
   const sandboxPreferencesUpdateTrigger =
     useRef<null | SandboxPreferencesUpdateTrigger>(null);
@@ -87,11 +64,6 @@ const App = () => {
     };
   }
 
-  useLayoutEffect(() => {
-    getMetaEl('csrf-token').setAttribute('content', csrfToken ?? '');
-    getMetaEl('csrf-time').setAttribute('content', csrfTime ?? '');
-  }, [csrfToken, csrfTime]);
-
   const onFailToLoadConnections = useCallback((error: Error) => {
     openToast('failed-to-load-connections', {
       title: 'Failed to load connections',
@@ -100,11 +72,13 @@ const App = () => {
     });
   }, []);
 
-  if (status === 'checking') {
-    return null;
-  }
+  const isAtlas = false;
 
-  const isAtlas = status === 'signed-in';
+  // Parse environment variables for configurable options
+  const readOnly = process.env.COMPASS_WEB_READ_ONLY === 'true';
+  const enableImportExport = process.env.COMPASS_WEB_ENABLE_IMPORT_EXPORT === 'true';
+  const enableShell = process.env.COMPASS_WEB_ENABLE_SHELL === 'true';
+  const enableForcedDirectConnection = process.env.COMPASS_WEB_DIRECT_CONNECTION === 'true';
 
   return (
     <SandboxConnectionStorageProvider
@@ -116,27 +90,42 @@ const App = () => {
         <Body as="div" className={sandboxContainerStyles}>
           <CompassWeb
             orgId={''}
-            projectId={projectId ?? ''}
+            projectId={''}
             onActiveWorkspaceTabChange={updateCurrentTab}
             initialWorkspace={currentTab ?? undefined}
             initialPreferences={{
               enableExportSchema: true,
               enablePerformanceAdvisorBanner: isAtlas,
-              enableAtlasSearchIndexes: !isAtlas,
-              maximumNumberOfActiveConnections: isAtlas ? 10 : undefined,
+              enableAtlasSearchIndexes: true,
+              maximumNumberOfActiveConnections: 100,
               atlasServiceBackendPreset: atlasServiceSandboxBackendVariant,
-              enableCreatingNewConnections: !isAtlas,
-              enableGlobalWrites: isAtlas,
+              enableGlobalWrites: false,
               enableRollingIndexes: isAtlas,
               showDisabledConnections: true,
-              enableGenAIFeaturesAtlasProject:
-                isAtlas && !!enableGenAIFeaturesAtlasProject,
-              enableGenAISampleDocumentPassingOnAtlasProject:
-                isAtlas && !!enableGenAISampleDocumentPassingOnAtlasProject,
-              enableGenAIFeaturesAtlasOrg:
-                isAtlas && !!enableGenAIFeaturesAtlasOrg,
-              optInGenAIFeatures: isAtlas && !!optInGenAIFeatures,
+              enableGenAIFeaturesAtlasProject: false,
+              enableGenAISampleDocumentPassingOnAtlasProject: false,
+              enableGenAIFeaturesAtlasOrg: false,
+              optInGenAIFeatures: false,
               enableDataModeling: true,
+
+              readOnly,
+              protectConnectionStrings: true,
+              protectConnectionStringsForNewConnections: true,
+              forceConnectionOptions: [
+                ['appName', 'TechiesCompassWeb'],
+                ['authSource', 'admin'],
+                ...(enableForcedDirectConnection ? [['directConnection', 'true'] as [string, string]] : []),
+                ['readConcernLevel', 'local'],
+                ['readPreference', 'secondaryPreferred'],
+              ],
+              enableCreatingNewConnections: true,
+
+              enableShell,
+              enableDbAndCollStats: true,
+
+              enableImportExport,
+              enableRenameCollectionModal: false,
+
             }}
             onTrack={sandboxTelemetry.track}
             onDebug={sandboxLogger.debug}

@@ -3,7 +3,5 @@ const tracking: { event: string; properties: any }[] = ((
 ).tracking = []);
 
 export const sandboxTelemetry = {
-  track: (event: string, properties: any) => {
-    tracking.push({ event, properties });
-  },
+  track: () => {},
 };
