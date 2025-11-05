@@ -37,6 +37,26 @@
   "scripts": {
     "prepublishOnly": "npm run compile && compass-scripts check-exports-exist",
     "compile": "npm run webpack -- --mode production",
+
+    "build:env:techies": "cp .env.techies .env",
+    "build:env:lumi:local": "cp .env.lumi-local .env",
+    "build:env:lumi:sit": "cp .env.lumi-sit .env",
+    "build:env:lumi:uat": "cp .env.lumi-uat .env",
+
+    "build:webpack:web": "rm -r dist; webpack --mode production --env BUILD_TARGET=sandbox",
+
+    "build:docker:proxy": "docker build -f Dockerfile.proxy -t compass-web:proxy .",
+    "build:docker:client:techies": "docker build -f Dockerfile.web -t compass-web:client-techies .",
+    "build:docker:client:lumi:local": "docker build -f Dockerfile.web -t compass-web:client-lumi-local .",
+    "build:docker:client:lumi:sit": "docker build -f Dockerfile.web -t compass-web:client-lumi-sit .",
+    "build:docker:client:lumi:uat": "docker build -f Dockerfile.web -t compass-web:client-lumi-uat .",
+
+    "build:proxy": "npm run build:docker:proxy",
+    "build:client:techies": "npm run build:env:techies && npm run build:webpack:web && npm run build:docker:client:techies",
+    "build:client:lumi:local": "npm run build:env:lumi:local && npm run build:webpack:web && npm run build:docker:client:lumi:local",
+    "build:client:lumi:sit": "npm run build:env:lumi:sit && npm run build:webpack:web && npm run build:docker:client:lumi:sit",
+    "build:client:lumi:uat": "npm run build:env:lumi:uat && npm run build:webpack:web && npm run build:docker:client:lumi:uat",
+
     "webpack": "webpack-compass",
     "postcompile": "npm run typescript",
     "typescript": "tsc -p tsconfig-build.json --emitDeclarationOnly",
@@ -44,6 +64,7 @@
     "start": "electron ./scripts/electron-proxy.js",
     "analyze": "npm run webpack -- --mode production --analyze",
     "watch": "npm run webpack -- --mode development --watch",
+    "dev": "npm run webpack serve -- --mode development --watch",
     "sync": "node scripts/sync-dist-to-mms.js",
     "typecheck": "tsc -p tsconfig-lint.json --noEmit",
     "eslint": "eslint-compass",
@@ -79,6 +100,7 @@
     "@mongodb-js/compass-field-store": "^9.44.0",
     "@mongodb-js/compass-generative-ai": "^0.49.0",
     "@mongodb-js/compass-global-writes": "^1.28.0",
+    "@mongodb-js/compass-import-export": "^7.67.0",
     "@mongodb-js/compass-indexes": "^5.68.0",
     "@mongodb-js/compass-logging": "^1.7.10",
     "@mongodb-js/compass-query-bar": "^8.70.0",
@@ -112,6 +134,7 @@
     "debug": "^4.3.4",
     "depcheck": "^1.4.1",
     "dns-query": "^0.11.2",
+    "dotenv": "^17.2.2",
     "electron": "^37.2.6",
     "events": "^3.3.0",
     "express": "^4.21.1",
