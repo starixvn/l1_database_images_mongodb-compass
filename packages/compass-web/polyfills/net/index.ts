@@ -2,12 +2,30 @@
 import { ipVersion } from 'is-ip';
 import type { ConnectionOptions } from 'mongodb-data-service';
 import { Duplex } from 'stream';
+import { WS_PROXY_URL } from './ws-url';
 
 /**
  * net.Socket interface that works over the WebSocket connection. For now, only
  * used when running compass-web in a local sandbox, mms has their own
  * implementation
  */
+
+type LookupResult = {
+  wsURL?: string;
+  clusterName?: string;
+};
+
+type SocketConnectionOptions = {
+  host?: string;
+  port?: number;
+  path?: string;
+  tls?: boolean;
+};
+
+type SocketConnectOptions = SocketConnectionOptions & {
+  lookup?: ConnectionOptions['lookup'];
+};
+
 enum MESSAGE_TYPE {
   JSON = 0x01,
   BINARY = 0x02,
@@ -18,40 +36,128 @@ class Socket extends Duplex {
   constructor() {
     super();
   }
-  connect({
-    lookup,
-    ...options
-  }: {
-    host: string;
-    port: number;
-    lookup?: ConnectionOptions['lookup'];
-    tls?: boolean;
-  }) {
-    const { wsURL, ...atlasOptions } =
-      lookup?.() ?? ({} as { wsURL?: string; clusterName?: string });
-    this._ws = new WebSocket(wsURL ?? '/ws-proxy');
+  connect({ lookup, ...options }: SocketConnectOptions) {
+    // Validate connection parameters
+    const hasHostPort = options.host && options.port;
+    const hasPath = options.path;
+
+    if (!hasHostPort && !hasPath) {
+      throw new Error(
+        'Connection requires either host+port or path for Unix socket'
+      );
+    }
+
+    if (hasHostPort && hasPath) {
+      throw new Error(
+        'Connection cannot have both host+port and path - choose one'
+      );
+    }
+
+    const { wsURL, ...atlasOptions } = lookup?.() ?? ({} as LookupResult);
+    const finalWsUrl = wsURL ?? WS_PROXY_URL ?? '/ws-proxy';
+
+    console.log('[Compass Web] Establishing WebSocket connection:', {
+      targetHost: options.host,
+      targetPort: options.port,
+      targetPath: options.path,
+      useTLS: options.tls ?? false,
+      atlasWsURL: wsURL || '(not provided)',
+      configuredProxyURL: WS_PROXY_URL,
+      finalWebSocketURL: finalWsUrl,
+    });
+
+    this._ws = new WebSocket(finalWsUrl);
     this._ws.binaryType = 'arraybuffer';
+
+    // Add detailed WebSocket connection debugging
+    this._ws.addEventListener('open', () => {
+      console.log(
+        '[Compass Web] (I) WebSocket opened successfully to:',
+        finalWsUrl
+      );
+    });
+
+    this._ws.addEventListener('error', (error) => {
+      console.error('[Compass Web] (E) WebSocket connection error:', {
+        url: finalWsUrl,
+        error: error,
+        readyState: this._ws?.readyState,
+        readyStateText:
+          this._ws?.readyState === 0
+            ? 'CONNECTING'
+            : this._ws?.readyState === 1
+            ? 'OPEN'
+            : this._ws?.readyState === 2
+            ? 'CLOSING'
+            : this._ws?.readyState === 3
+            ? 'CLOSED'
+            : 'UNKNOWN',
+      });
+    });
+
     this._ws.addEventListener(
       'open',
       () => {
-        const connectMsg = JSON.stringify({
-          port: options.port,
-          host: options.host,
-          tls: options.tls ?? false,
-          clusterName: atlasOptions.clusterName,
-          ok: 1,
-        });
+        // Build connection message based on connection type
+        const connectMsg = options.path
+          ? JSON.stringify({
+              // Unix socket connection
+              connectOptions: {
+                path: options.path,
+              },
+              tls: options.tls ?? false,
+              setOptions: {
+                setKeepAlive: { enabled: true, initialDelay: 300000 },
+                setTimeout: { timeout: 30000 },
+                setNoDelay: { noDelay: true },
+              },
+            })
+          : JSON.stringify({
+              // TCP connection (legacy format)
+              connectOptions: {
+                host: options.host,
+                port: options.port,
+              },
+              tls: options.tls ?? false,
+              clusterName: atlasOptions.clusterName,
+              setOptions: {
+                setKeepAlive: { enabled: true, initialDelay: 300000 },
+                setTimeout: { timeout: 30000 },
+                setNoDelay: { noDelay: true },
+              },
+            });
+
+        console.log(
+          '[Compass Web] (I) Sending connection message:',
+          JSON.parse(connectMsg)
+        );
+
         setTimeout(() => {
           this._ws?.send(this.encodeStringMessageWithTypeByte(connectMsg));
         });
       },
       { once: true }
     );
-    this._ws.addEventListener('close', () => {
+    this._ws.addEventListener('close', (event) => {
+      console.log('[Compass Web] (I) WebSocket closed:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        url: finalWsUrl,
+      });
       this.emit('close');
     });
-    this._ws.addEventListener('error', () => {
-      this.emit('error', 'WebSocket connection was closed due to an error');
+
+    this._ws.addEventListener('error', (event) => {
+      console.error('[Compass Web] (E) WebSocket error event:', {
+        event: event,
+        url: finalWsUrl,
+        readyState: this._ws?.readyState,
+      });
+      this.emit(
+        'error',
+        new Error(`WebSocket connection failed to ${finalWsUrl}: ${event.type}`)
+      );
     });
     this._ws.addEventListener(
       'message',
@@ -63,6 +169,13 @@ class Socket extends Duplex {
             if (res.preMessageOk) {
               setTimeout(() => {
                 this.emit(options.tls ? 'secureConnect' : 'connect');
+              });
+            } else if (res.error) {
+              // Handle detailed error messages from proxy
+              const errorMsg = `WebSocket proxy error: ${res.message} (event: ${res.event}, code: ${res.code}, target: ${res.target})`;
+              console.error('[Compass Web] (E) WebSocket Proxy Error:', res);
+              setTimeout(() => {
+                this.emit('error', new Error(errorMsg));
               });
             }
           } catch (err) {
@@ -154,7 +267,7 @@ class Socket extends Duplex {
 // @ts-expect-error import vs require
 export { isIPv4, isIPv6 } from 'is-ip';
 export const isIP = (input: string) => ipVersion(input) ?? 0;
-export const createConnection = (options: { host: string; port: number }) => {
+export const createConnection = (options: SocketConnectionOptions) => {
   const socket = new Socket();
   setTimeout(() => {
     socket.connect(options);
