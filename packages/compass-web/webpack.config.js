@@ -1,11 +1,16 @@
 'use strict';
 const path = require('path');
+
+// Load environment variables from .env file with highest priority
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const {
   webpack,
   createWebConfig,
   isServe,
   merge,
 } = require('@mongodb-js/webpack-config-compass');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const { createWebSocketProxy } = require('./scripts/ws-proxy');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
@@ -25,10 +30,7 @@ function resolveDepEntry(name) {
   if (resolvedPath.startsWith(monorepoPackagesDir)) {
     const packageJson = require(`${name}/package.json`);
     const packageRoot = path.dirname(require.resolve(`${name}/package.json`));
-    const entrypoint = path.join(
-      packageRoot,
-      packageJson['compass:main'] ?? packageJson['main']
-    );
+    const entrypoint = path.join(packageRoot, packageJson['main']);
     return entrypoint;
   }
   return require.resolve(name);
@@ -86,11 +88,40 @@ const MAX_COMPRESSION_FILE_SIZE = 10_000_000;
 
 module.exports = (env, args) => {
   const serve = isServe({ env });
+  const buildSandbox = env.BUILD_TARGET === 'sandbox';
+  const useSandboxConfig = serve || buildSandbox;
+  const basePath = process.env.COMPASS_WEB_BASE_PATH || '';
+
+  // Parse port environment variables
+  const webpackDevServerPort = process.env
+    .COMPASS_WEB_HTTP_WEBPACK_DEV_SERVER_PORT
+    ? Number(process.env.COMPASS_WEB_HTTP_WEBPACK_DEV_SERVER_PORT)
+    : 4242;
+  const wsProxyPort = process.env.COMPASS_WEBSOCKET_PROXY_PORT
+    ? Number(process.env.COMPASS_WEBSOCKET_PROXY_PORT)
+    : 1337;
+
+  // Parse WebSocket proxy configuration for reverse proxy support
+  const wsProxyProtocol = process.env.COMPASS_WEBSOCKET_PROXY_PROTOCOL || 'ws';
+  const wsProxyHost = process.env.COMPASS_WEBSOCKET_PROXY_HOST || 'localhost';
+  const wsProxyUrlOverride = process.env.COMPASS_WEBSOCKET_PROXY_URL;
+
+  // Parse boolean environment variables with defaults
+  const readOnly = process.env.COMPASS_WEB_READ_ONLY !== 'false'; // default: true
+  const enableImportExport =
+    process.env.COMPASS_WEB_ENABLE_IMPORT_EXPORT === 'true'; // default: false
+  const enableShell = process.env.COMPASS_WEB_ENABLE_SHELL === 'true'; // default: false
+  const enableDirectConnection =
+    process.env.COMPASS_WEB_DIRECT_CONNECTION === 'true'; // default: false
 
   let config = createWebConfig({
     ...args,
     hot: serve,
-    entry: path.resolve(__dirname, serve ? 'sandbox' : 'src', 'index.tsx'),
+    entry: path.resolve(
+      __dirname,
+      useSandboxConfig ? 'sandbox' : 'src',
+      'index.tsx'
+    ),
   });
 
   delete config.externals;
@@ -106,16 +137,6 @@ module.exports = (env, args) => {
         '@mongodb-js/devtools-proxy-support': localPolyfill(
           '@mongodb-js/devtools-proxy-support'
         ),
-
-        ...(config.mode === 'production'
-          ? {
-              // We don't need saslprep in the product web bundle, as we don't use scram auth there.
-              // We use a local polyfill for the driver to avoid having it in the bundle
-              // as it is a decent size. We do use scram auth in tests and local
-              // development, so we want it there.
-              '@mongodb-js/saslprep': localPolyfill('@mongodb-js/saslprep'),
-            }
-          : {}),
 
         // Replace 'devtools-connect' with a package that just directly connects
         // using the driver (= web-compatible driver) logic, because devtools-connect
@@ -156,7 +177,9 @@ module.exports = (env, args) => {
         // ),
 
         // Things that are easier to polyfill than to deal with their usage
+        'stream/promises': localPolyfill('stream/promises'),
         stream: require.resolve('readable-stream'),
+        '@electron/remote': localPolyfill('@electron/remote'),
         path: require.resolve('path-browserify'),
         // The `/` so that we are resolving the installed polyfill version with
         // the same name as Node.js built-in, not a built-in Node.js one
@@ -208,10 +231,51 @@ module.exports = (env, args) => {
       },
     },
     plugins: [
+      // Add detailed build progress reporting
+      new webpack.ProgressPlugin({
+        activeModules: true, // Show currently processed modules
+        entries: true, // Show entries being processed
+        dependencies: true, // Show dependencies being processed
+        modules: true, // Show modules being processed
+        modulesCount: 5000, // Show progress for every N modules
+        profile: false, // Enable profiling (can be verbose)
+        handler: (percentage, message, ...args) => {
+          // Custom progress handler for more detailed output
+          const info = args.length > 0 ? ` (${args.join(' ')})` : '';
+          console.log(
+            `🔨 Build Progress: ${Math.round(
+              percentage * 100
+            )}% ${message}${info}`
+          );
+        },
+      }),
+
       new webpack.DefinePlugin({
         // Can be either `web` or `webdriverio`, helpful if we need special
         // behavior for tests in sandbox
         'process.env.APP_ENV': JSON.stringify(process.env.APP_ENV ?? 'web'),
+        'process.env.COMPASS_WEB_BASE_PATH': JSON.stringify(basePath),
+        'process.env.COMPASS_WEB_READ_ONLY': JSON.stringify(
+          readOnly.toString()
+        ),
+        'process.env.COMPASS_WEB_ENABLE_IMPORT_EXPORT': JSON.stringify(
+          enableImportExport.toString()
+        ),
+        'process.env.COMPASS_WEB_ENABLE_SHELL': JSON.stringify(
+          enableShell.toString()
+        ),
+        'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
+          enableDirectConnection.toString()
+        ),
+        'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
+          wsProxyPort.toString()
+        ),
+        'process.env.COMPASS_WEBSOCKET_PROXY_PROTOCOL':
+          JSON.stringify(wsProxyProtocol),
+        'process.env.COMPASS_WEBSOCKET_PROXY_HOST': JSON.stringify(wsProxyHost),
+        'process.env.COMPASS_WEBSOCKET_PROXY_URL': JSON.stringify(
+          wsProxyUrlOverride || ''
+        ),
       }),
 
       new webpack.ProvidePlugin({
@@ -221,39 +285,58 @@ module.exports = (env, args) => {
       }),
     ],
     performance: {
-      hints: serve || args.watch ? 'warning' : 'error',
+      hints: false, // Disable performance warnings/errors for bundle size
       maxEntrypointSize: MAX_COMPRESSION_FILE_SIZE,
       maxAssetSize: MAX_COMPRESSION_FILE_SIZE,
     },
+
+    // Enhanced stats configuration for verbose build output
+    stats: {
+      preset: 'normal', // Base preset for detailed output
+      colors: true, // Enable colored output
+      hash: true, // Show compilation hash
+      version: true, // Show webpack version
+      timings: true, // Show timing information
+      assets: true, // Show assets information
+      chunks: true, // Show chunks information
+      chunkModules: false, // Hide chunk modules (can be very verbose)
+      modules: false, // Hide individual modules (can be very verbose)
+      reasons: false, // Hide reasons for including modules
+      source: false, // Hide source code of modules
+      errorDetails: true, // Show error details
+      warningsFilter: [], // Show all warnings
+      moduleTrace: true, // Show module trace for errors
+      builtAt: true, // Show build timestamp
+      env: true, // Show environment info
+      chunkGroupAuxiliary: true, // Show auxiliary chunk group info
+      chunkGroupChildren: true, // Show children chunk groups
+      chunkGroupMaxAssets: 5, // Limit assets shown per chunk group
+    },
+
+    // Infrastructure logging for detailed webpack internals
+    infrastructureLogging: {
+      level: 'info', // Show info level logs (error, warn, info)
+      debug: false, // Disable debug logging (very verbose)
+      colors: true, // Enable colored logging
+    },
   });
 
-  if (serve) {
+  if (useSandboxConfig) {
+    // Only create WebSocket proxy in actual serve mode, not sandbox build
+    if (serve && !buildSandbox) {
+      createWebSocketProxy(wsProxyPort);
+    }
+
     config.output = {
       path: config.output.path,
-      filename: config.output.filename,
+      filename: buildSandbox
+        ? '[name].[contenthash].js'
+        : config.output.filename,
       assetModuleFilename: config.output.assetModuleFilename,
+      publicPath: basePath ? `${basePath}/` : '/',
     };
 
-    return merge(config, {
-      devServer: {
-        hot: true,
-        open: false,
-        magicHtml: false,
-        port: 4242,
-        historyApiFallback: {
-          rewrites: [{ from: /./, to: 'index.html' }],
-        },
-        static: {
-          directory: path.resolve(__dirname, 'sandbox'),
-          publicPath: '/',
-        },
-        client: {
-          overlay:
-            process.env.DISABLE_DEVSERVER_OVERLAY === 'true'
-              ? false
-              : { warnings: false, errors: true, runtimeErrors: true },
-        },
-      },
+    const sandboxConfig = {
       resolve: {
         alias: {
           // Local polyfill for tls that allow us to connect to any MongoDB
@@ -271,9 +354,70 @@ module.exports = (env, args) => {
             JSON.stringify(
               process.env.E2E_TEST_CLOUD_WEB_ENABLE_PREFERENCE_SAVING ?? 'false'
             ),
+          'process.env.COMPASS_WEB_BASE_PATH': JSON.stringify(basePath),
+          'process.env.COMPASS_WEB_READ_ONLY': JSON.stringify(
+            readOnly.toString()
+          ),
+          'process.env.COMPASS_WEB_ENABLE_IMPORT_EXPORT': JSON.stringify(
+            enableImportExport.toString()
+          ),
+          'process.env.COMPASS_WEB_ENABLE_SHELL': JSON.stringify(
+            enableShell.toString()
+          ),
+          'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
+            enableDirectConnection.toString()
+          ),
+          'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
+            wsProxyPort.toString()
+          ),
+          'process.env.COMPASS_WEBSOCKET_PROXY_PROTOCOL':
+            JSON.stringify(wsProxyProtocol),
+          'process.env.COMPASS_WEBSOCKET_PROXY_HOST':
+            JSON.stringify(wsProxyHost),
+          'process.env.COMPASS_WEBSOCKET_PROXY_URL': JSON.stringify(
+            wsProxyUrlOverride || ''
+          ),
+        }),
+        new HtmlWebpackPlugin({
+          template: path.resolve(__dirname, 'sandbox', 'index.html'),
+          filename: 'index.html',
+          basePath: basePath || '',
+          inject: 'body', // Let webpack automatically inject script tags with correct hashed filenames
+          publicPath: basePath ? `${basePath}/` : '/',
         }),
       ],
-    });
+    };
+
+    // Add devServer configuration only for actual serve mode
+    if (serve && !buildSandbox) {
+      sandboxConfig.devServer = {
+        hot: true,
+        open: false,
+        magicHtml: false,
+        port: webpackDevServerPort,
+        historyApiFallback: {
+          index: basePath ? `${basePath}/index.html` : '/index.html',
+          rewrites: basePath
+            ? [
+                {
+                  from: new RegExp(
+                    `^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
+                  ),
+                  to: `${basePath}/index.html`,
+                },
+              ]
+            : [{ from: /./, to: '/index.html' }],
+        },
+        client: {
+          overlay:
+            process.env.DISABLE_DEVSERVER_OVERLAY === 'true'
+              ? false
+              : { warnings: false, errors: true, runtimeErrors: true },
+        },
+      };
+    }
+
+    return merge(config, sandboxConfig);
   }
 
   config.output = {
