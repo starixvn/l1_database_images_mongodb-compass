@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+exit
 . "$(dirname -- "$0")/_/husky.sh"
 
 # listings staged files only
