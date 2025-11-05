@@ -1,0 +1,18 @@
+{
+  "name": "ws-proxy",
+  "version": "1.0.0",
+  "description": "WebSocket proxy service for MongoDB Compass Web",
+  "main": "scripts/start-proxy.js",
+  "scripts": {
+    "start": "node scripts/start-proxy.js",
+    "healthcheck": "node scripts/healthcheck.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "author": "MongoDB Inc",
+  "license": "SSPL"
+}

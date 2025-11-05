@@ -1,0 +1,35 @@
+# Use Node.js 22 Alpine for a lightweight, secure base
+FROM node:22-alpine
+
+# Create a non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodeuser -u 1001 -G nodejs && \
+    install -d -m 755 -o nodeuser -g nodejs /app
+
+WORKDIR /app
+
+# Copy package configuration for ws dependency
+COPY package.proxy.json package.json
+
+# Install only the ws dependency needed for the proxy
+RUN npm install --only=production --no-audit --no-fund && \
+    npm cache clean --force
+
+# Copy the WebSocket proxy scripts
+COPY scripts/ws-proxy.js scripts/start-proxy.js scripts/healthcheck.js scripts/
+
+# Change ownership to nodeuser for security
+RUN chown -R nodeuser:nodejs /app
+
+# Switch to non-root user
+USER nodeuser
+
+# Expose port 8081 as requested
+EXPOSE 8081
+
+# Health check for the WebSocket service
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["node", "scripts/healthcheck.js"]
+
+# Start the WebSocket proxy service on port 8081
+CMD ["node", "scripts/start-proxy.js"]
