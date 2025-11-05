@@ -94,4 +94,61 @@ describe('url builder helpers', function () {
       });
     }
   });
+
+  describe('with base path', function () {
+    let originalBasePath: string;
+
+    before(function () {
+      // Store original value
+      originalBasePath = process.env.COMPASS_WEB_BASE_PATH || '';
+    });
+
+    after(function () {
+      // Restore original value
+      if (originalBasePath) {
+        process.env.COMPASS_WEB_BASE_PATH = originalBasePath;
+      } else {
+        delete process.env.COMPASS_WEB_BASE_PATH;
+      }
+    });
+
+    beforeEach(function () {
+      // Set base path for these tests
+      process.env.COMPASS_WEB_BASE_PATH = '/compass';
+      // Force module to reload with new environment variable
+      delete require.cache[require.resolve('./url-builder')];
+    });
+
+    afterEach(function () {
+      // Clean up for next test
+      delete process.env.COMPASS_WEB_BASE_PATH;
+      delete require.cache[require.resolve('./url-builder')];
+    });
+
+    it('should handle base path in getWorkspaceTabFromRoute', function () {
+      const { getWorkspaceTabFromRoute } = require('./url-builder');
+
+      expect(getWorkspaceTabFromRoute('/compass/')).to.deep.eq({
+        type: 'Welcome',
+      });
+
+      expect(getWorkspaceTabFromRoute('/compass/Cluster0')).to.deep.eq({
+        type: 'Databases',
+        connectionId: 'Cluster0',
+      });
+    });
+
+    it('should handle base path in getRouteFromWorkspaceTab', function () {
+      const { getRouteFromWorkspaceTab } = require('./url-builder');
+
+      expect(getRouteFromWorkspaceTab({ type: 'Welcome' })).to.eq('/compass/');
+
+      expect(
+        getRouteFromWorkspaceTab({
+          type: 'Databases',
+          connectionId: 'Cluster0',
+        })
+      ).to.eq('/compass/Cluster0');
+    });
+  });
 });

@@ -1,67 +1,43 @@
-import React, { useEffect, useRef } from 'react';
-import AppRegistry, {
-  AppRegistryProvider,
-  GlobalAppRegistryProvider,
-} from '@mongodb-js/compass-app-registry';
+import { AtlasServiceProvider } from '@mongodb-js/atlas-service/provider';
+import { CompassAggregationsPlugin, CreateViewPlugin } from '@mongodb-js/compass-aggregations';
+import AppRegistry, { AppRegistryProvider, GlobalAppRegistryProvider } from '@mongodb-js/compass-app-registry';
+import { CompassInstanceStorePlugin } from '@mongodb-js/compass-app-stores';
+import { CompassAssistantDrawer, CompassAssistantProvider } from '@mongodb-js/compass-assistant';
+import { CollectionTabsProvider, WorkspaceTab as CollectionWorkspace } from '@mongodb-js/compass-collection';
+import { CompassComponentsProvider, css } from '@mongodb-js/compass-components';
+import CompassConnections from '@mongodb-js/compass-connections';
 import type { ConnectionInfo } from '@mongodb-js/compass-connections/provider';
 import { useConnectionActions } from '@mongodb-js/compass-connections/provider';
-import { CompassInstanceStorePlugin } from '@mongodb-js/compass-app-stores';
-import type { OpenWorkspaceOptions } from '@mongodb-js/compass-workspaces';
-import WorkspacesPlugin, {
-  WorkspacesProvider,
-} from '@mongodb-js/compass-workspaces';
-import {
-  DatabasesWorkspaceTab,
-  CollectionsWorkspaceTab,
-} from '@mongodb-js/compass-databases-collections';
-import { CompassComponentsProvider, css } from '@mongodb-js/compass-components';
-import {
-  WorkspaceTab as CollectionWorkspace,
-  CollectionTabsProvider,
-} from '@mongodb-js/compass-collection';
-import {
-  CompassSidebarPlugin,
-  AtlasClusterConnectionsOnlyProvider,
-} from '@mongodb-js/compass-sidebar';
-import CompassQueryBarPlugin from '@mongodb-js/compass-query-bar';
 import { CompassDocumentsPlugin } from '@mongodb-js/compass-crud';
-import {
-  CompassAggregationsPlugin,
-  CreateViewPlugin,
-} from '@mongodb-js/compass-aggregations';
-import { CompassSchemaPlugin } from '@mongodb-js/compass-schema';
-import { CompassIndexesPlugin } from '@mongodb-js/compass-indexes';
-import { CompassSchemaValidationPlugin } from '@mongodb-js/compass-schema-validation';
-import { CompassGlobalWritesPlugin } from '@mongodb-js/compass-global-writes';
-import { CompassGenerativeAIPlugin } from '@mongodb-js/compass-generative-ai';
-import ExplainPlanCollectionTabModal from '@mongodb-js/compass-explain-plan';
-import ExportToLanguageCollectionTabModal from '@mongodb-js/compass-export-to-language';
-import {
-  CreateNamespacePlugin,
-  DropNamespacePlugin,
-  RenameCollectionPlugin,
-} from '@mongodb-js/compass-databases-collections';
-import { PreferencesProvider } from 'compass-preferences-model/provider';
-import type { AllPreferences } from 'compass-preferences-model/provider';
-import FieldStorePlugin from '@mongodb-js/compass-field-store';
-import { AtlasServiceProvider } from '@mongodb-js/atlas-service/provider';
-import { AtlasAiServiceProvider } from '@mongodb-js/compass-generative-ai/provider';
-import { LoggerProvider } from '@mongodb-js/compass-logging/provider';
-import { TelemetryProvider } from '@mongodb-js/compass-telemetry/provider';
-import CompassConnections from '@mongodb-js/compass-connections';
-import { AtlasCloudConnectionStorageProvider } from './connection-storage';
-import { AtlasCloudAuthServiceProvider } from './atlas-auth-service';
-import type { LogFunction, DebugFunction } from './logger';
-import { useCompassWebLogger } from './logger';
-import { type TelemetryServiceOptions } from '@mongodb-js/compass-telemetry';
-import { WebWorkspaceTab as WelcomeWorkspaceTab } from '@mongodb-js/compass-welcome';
-import { useCompassWebPreferences } from './preferences';
 import { DataModelingWorkspaceTab as DataModelingWorkspace } from '@mongodb-js/compass-data-modeling';
 import { DataModelStorageServiceProviderInMemory } from '@mongodb-js/compass-data-modeling/web';
-import {
-  CompassAssistantDrawer,
-  CompassAssistantProvider,
-} from '@mongodb-js/compass-assistant';
+import { CollectionsWorkspaceTab, CreateNamespacePlugin, DatabasesWorkspaceTab, DropNamespacePlugin, RenameCollectionPlugin } from '@mongodb-js/compass-databases-collections';
+import ExplainPlanCollectionTabModal from '@mongodb-js/compass-explain-plan';
+import ExportToLanguageCollectionTabModal from '@mongodb-js/compass-export-to-language';
+import FieldStorePlugin from '@mongodb-js/compass-field-store';
+import { CompassGenerativeAIPlugin } from '@mongodb-js/compass-generative-ai';
+import { AtlasAiServiceProvider } from '@mongodb-js/compass-generative-ai/provider';
+import { CompassGlobalWritesPlugin } from '@mongodb-js/compass-global-writes';
+import { ExportPlugin } from '@mongodb-js/compass-import-export';
+import { CompassIndexesPlugin } from '@mongodb-js/compass-indexes';
+import { LoggerProvider } from '@mongodb-js/compass-logging/provider';
+import CompassQueryBarPlugin from '@mongodb-js/compass-query-bar';
+import { CompassSchemaPlugin } from '@mongodb-js/compass-schema';
+import { CompassSchemaValidationPlugin } from '@mongodb-js/compass-schema-validation';
+import { AtlasClusterConnectionsOnlyProvider, CompassSidebarPlugin } from '@mongodb-js/compass-sidebar';
+import { type TelemetryServiceOptions } from '@mongodb-js/compass-telemetry';
+import { TelemetryProvider } from '@mongodb-js/compass-telemetry/provider';
+import { WebWorkspaceTab as WelcomeWorkspaceTab } from '@mongodb-js/compass-welcome';
+import type { OpenWorkspaceOptions } from '@mongodb-js/compass-workspaces';
+import WorkspacesPlugin, { WorkspacesProvider } from '@mongodb-js/compass-workspaces';
+import type { AllPreferences } from 'compass-preferences-model/provider';
+import { PreferencesProvider } from 'compass-preferences-model/provider';
+import React, { useEffect, useRef } from 'react';
+import { AtlasCloudAuthServiceProvider } from './atlas-auth-service';
+import { AtlasCloudConnectionStorageProvider } from './connection-storage';
+import type { DebugFunction, LogFunction } from './logger';
+import { useCompassWebLogger } from './logger';
+import { useCompassWebPreferences } from './preferences';
 
 export type TrackFunction = (
   event: string,
@@ -223,6 +199,7 @@ function CompassWorkspace({
                   <DropNamespacePlugin></DropNamespacePlugin>
                   <RenameCollectionPlugin></RenameCollectionPlugin>
                   <CompassAssistantDrawer />
+                  <ExportPlugin></ExportPlugin>
                 </>
               );
             }}

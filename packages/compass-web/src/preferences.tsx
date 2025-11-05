@@ -1,6 +1,6 @@
-import React, { useContext, useRef, useEffect } from 'react';
 import type { AllPreferences } from 'compass-preferences-model/provider';
 import { CompassWebPreferencesAccess } from 'compass-preferences-model/provider';
+import React, { useContext, useEffect, useRef } from 'react';
 
 export type SandboxPreferencesUpdateTrigger = (
   updatePreference: (preferences: Partial<AllPreferences>) => Promise<void>
@@ -41,7 +41,7 @@ export function useCompassWebPreferences(
       enableAggregationBuilderRunPipeline: true,
       enableAggregationBuilderExtraOptions: true,
       enableAtlasSearchIndexes: false,
-      enableImportExport: false,
+      enableImportExport: true,
       enableGenAIFeatures: true,
       enableGenAIFeaturesAtlasProject: false,
       enableGenAISampleDocumentPassingOnAtlasProject: false,
