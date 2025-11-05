@@ -17,7 +17,18 @@ const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
 function localPolyfill(name) {
-  return path.resolve(__dirname, 'polyfills', ...name.split('/'), 'index.ts');
+  const basePath = path.resolve(__dirname, 'polyfills', ...name.split('/'));
+  // Check for .tsx first (for React components), then fall back to .ts
+  const tsxPath = path.join(basePath, 'index.tsx');
+  const tsPath = path.join(basePath, 'index.ts');
+  try {
+    if (require('fs').existsSync(tsxPath)) {
+      return tsxPath;
+    }
+  } catch (e) {
+    // Fall through to .ts
+  }
+  return tsPath;
 }
 
 function normalizeDepName(name) {
@@ -146,6 +157,11 @@ module.exports = (env, args) => {
           '@mongodb-js/devtools-connect'
         ),
 
+        // Polyfill for compass-welcome to customize welcome page content
+        '@mongodb-js/compass-welcome': localPolyfill(
+          '@mongodb-js/compass-welcome'
+        ),
+
         // TODO(COMPASS-7407): compass-logging
         // hard to disable the whole thing while there are direct dependencies
         // on log-writer
@@ -267,6 +283,12 @@ module.exports = (env, args) => {
         'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
           enableDirectConnection.toString()
         ),
+        'process.env.COMPASS_WEB_DOCUMENTATION_LINK': JSON.stringify(
+          process.env.COMPASS_WEB_DOCUMENTATION_LINK || ''
+        ),
+        'process.env.COMPASS_WEB_LOGOUT_PATH': JSON.stringify(
+          process.env.COMPASS_WEB_LOGOUT_PATH || ''
+        ),
         'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
           wsProxyPort.toString()
         ),
@@ -366,6 +388,12 @@ module.exports = (env, args) => {
           ),
           'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
             enableDirectConnection.toString()
+          ),
+          'process.env.COMPASS_WEB_DOCUMENTATION_LINK': JSON.stringify(
+            process.env.COMPASS_WEB_DOCUMENTATION_LINK || ''
+          ),
+          'process.env.COMPASS_WEB_LOGOUT_PATH': JSON.stringify(
+            process.env.COMPASS_WEB_LOGOUT_PATH || ''
           ),
           'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
             wsProxyPort.toString()
