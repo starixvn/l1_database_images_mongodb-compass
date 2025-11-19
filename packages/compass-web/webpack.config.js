@@ -296,6 +296,9 @@ module.exports = (env, args) => {
           process.env.COMPASS_WEB_CONNECTION_HISTORY_KEY ||
             'CONNECTIONS_HISTORY_V$'
         ),
+        'process.env.COMPASS_WEB_ENCRYPTION_KEY': JSON.stringify(
+          process.env.COMPASS_WEB_ENCRYPTION_KEY || ''
+        ),
         'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
           wsProxyPort.toString()
         ),
@@ -408,6 +411,9 @@ module.exports = (env, args) => {
           'process.env.COMPASS_WEB_CONNECTION_HISTORY_KEY': JSON.stringify(
             process.env.COMPASS_WEB_CONNECTION_HISTORY_KEY ||
               'CONNECTIONS_HISTORY_V$'
+          ),
+          'process.env.COMPASS_WEB_ENCRYPTION_KEY': JSON.stringify(
+            process.env.COMPASS_WEB_ENCRYPTION_KEY || ''
           ),
           'process.env.COMPASS_WEBSOCKET_PROXY_PORT': JSON.stringify(
             wsProxyPort.toString()

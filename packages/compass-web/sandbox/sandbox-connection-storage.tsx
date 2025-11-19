@@ -4,25 +4,94 @@ import type {
 } from '@mongodb-js/connection-storage/provider';
 
 const historyKey = process.env.COMPASS_WEB_CONNECTION_HISTORY_KEY || 'CONNECTIONS_HISTORY_V$';
+const encryptionKey = process.env.COMPASS_WEB_ENCRYPTION_KEY || '';
 
-function getHistory(): ConnectionInfo[] {
+// Derive a CryptoKey from the encryption key string
+async function getCryptoKey(): Promise<CryptoKey | null> {
+  if (!encryptionKey) {
+    return null;
+  }
+
+  // Hash the key string to get a fixed-length key
+  const keyData = new TextEncoder().encode(encryptionKey);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', keyData);
+
+  return crypto.subtle.importKey(
+    'raw',
+    hashBuffer,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Encrypt data using AES-GCM
+async function encrypt(data: string): Promise<string> {
+  const key = await getCryptoKey();
+  if (!key) {
+    // No encryption key, return data as-is
+    return data;
+  }
+
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12 bytes IV for AES-GCM
+  const encodedData = new TextEncoder().encode(data);
+
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encodedData
+  );
+
+  // Combine IV and encrypted data
+  const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encryptedBuffer), iv.length);
+
+  return String.fromCodePoint(...combined);
+}
+
+// Decrypt data using AES-GCM
+async function decrypt(encryptedData: string): Promise<string> {
+  const key = await getCryptoKey();
+  if (!key) {
+    // No encryption key, return data as-is
+    return encryptedData;
+  }
+
+  const combined = Uint8Array.from(encryptedData, (v) => v.codePointAt(0) ?? 0);
+
+  // Extract IV and encrypted data
+  const iv = combined.slice(0, 12);
+  const encrypted = combined.slice(12);
+
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encrypted
+  );
+
+  return new TextDecoder().decode(decryptedBuffer);
+}
+
+async function getHistory(): Promise<ConnectionInfo[]> {
   try {
     const b64Str = localStorage.getItem(historyKey);
     if (!b64Str) {
       return [];
     }
     const binStr = window.atob(b64Str);
-    const bytes = Uint8Array.from(binStr, (v) => v.codePointAt(0) ?? 0);
-    const str = new TextDecoder().decode(bytes);
-    return JSON.parse(str);
+    const decryptedStr = await decrypt(binStr);
+    return JSON.parse(decryptedStr);
   } catch {
     return [];
   }
 }
-function saveHistory(history: ConnectionInfo[]) {
+
+async function saveHistory(history: ConnectionInfo[]) {
   try {
-    const bytes = new TextEncoder().encode(JSON.stringify(history));
-    const binStr = String.fromCodePoint(...bytes);
+    const jsonStr = JSON.stringify(history);
+    const encryptedStr = await encrypt(jsonStr);
+    const binStr = encryptedStr;
     const b64Str = window.btoa(binStr);
     localStorage.setItem(historyKey, b64Str);
   } catch {
@@ -31,30 +100,49 @@ function saveHistory(history: ConnectionInfo[]) {
 }
 
 class SandboxConnectionStorage implements ConnectionStorage {
-  private _connections = new Map(
-    getHistory().map((info) => {
-      return [info.id, info];
-    })
-  );
-  loadAll(): Promise<ConnectionInfo[]> {
-    return Promise.resolve(Array.from(this._connections.values()));
+  private _connections = new Map<string, ConnectionInfo>();
+  private _initialized = false;
+  private _initPromise: Promise<void>;
+
+  constructor() {
+    this._initPromise = this._initialize();
   }
-  load({ id }: { id: string }): Promise<ConnectionInfo | undefined> {
-    return Promise.resolve(this._connections.get(id));
+
+  private async _initialize(): Promise<void> {
+    if (this._initialized) {
+      return;
+    }
+    const history = await getHistory();
+    history.forEach((info) => {
+      this._connections.set(info.id, info);
+    });
+    this._initialized = true;
   }
-  save({ connectionInfo }: { connectionInfo: ConnectionInfo }): Promise<void> {
+
+  async loadAll(): Promise<ConnectionInfo[]> {
+    await this._initPromise;
+    return Array.from(this._connections.values());
+  }
+
+  async load({ id }: { id: string }): Promise<ConnectionInfo | undefined> {
+    await this._initPromise;
+    return this._connections.get(id);
+  }
+
+  async save({ connectionInfo }: { connectionInfo: ConnectionInfo }): Promise<void> {
+    await this._initPromise;
     this._connections.set(connectionInfo.id, connectionInfo);
     setTimeout(() => {
-      saveHistory(Array.from(this._connections.values()));
+      void saveHistory(Array.from(this._connections.values()));
     }, 0);
-    return Promise.resolve();
   }
-  delete({ id }: { id: string }): Promise<void> {
+
+  async delete({ id }: { id: string }): Promise<void> {
+    await this._initPromise;
     this._connections.delete(id);
     setTimeout(() => {
-      saveHistory(Array.from(this._connections.values()));
+      void saveHistory(Array.from(this._connections.values()));
     }, 0);
-    return Promise.resolve();
   }
 }
 
