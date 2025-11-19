@@ -3,7 +3,7 @@ import type {
   ConnectionStorage,
 } from '@mongodb-js/connection-storage/provider';
 
-const historyKey = 'CONNECTIONS_HISTORY_V$';
+const historyKey = process.env.COMPASS_WEB_CONNECTION_HISTORY_KEY || 'CONNECTIONS_HISTORY_V$';
 
 function getHistory(): ConnectionInfo[] {
   try {
