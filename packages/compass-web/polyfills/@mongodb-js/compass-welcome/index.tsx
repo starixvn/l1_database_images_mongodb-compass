@@ -14,7 +14,6 @@ import {
     Link,
     spacing,
 } from '@mongodb-js/compass-components';
-import { useConnectionIds } from '@mongodb-js/compass-connections/provider';
 import { createLoggerLocator } from '@mongodb-js/compass-logging/provider';
 import { telemetryLocator } from '@mongodb-js/compass-telemetry/provider';
 import type { WorkspacePlugin } from '@mongodb-js/compass-workspaces';
@@ -152,12 +151,12 @@ const contentBodyStyles = css({
  * You can modify the text here to customize the welcome page
  */
 function ModifiedWebWelcomeTab() {
-    const numConnections = useConnectionIds().length;
+    const appName = process.env.COMPASS_WEB_APP_NAME || 'Compass Web';
     return (
         <div className={welcomeTabStyles}>
             <WelcomeTabImage />
             <div>
-                <H3>Welcome to Compass Web!</H3>
+                <H3>Welcome to {appName}!</H3>
                 <div className={contentBodyStyles}>
                     <Body>
                         To get started, connect to your MongoDB Cluster.

@@ -283,6 +283,9 @@ module.exports = (env, args) => {
         'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
           enableDirectConnection.toString()
         ),
+        'process.env.COMPASS_WEB_APP_NAME': JSON.stringify(
+          process.env.COMPASS_WEB_APP_NAME || 'Compass Web'
+        ),
         'process.env.COMPASS_WEB_DOCUMENTATION_LINK': JSON.stringify(
           process.env.COMPASS_WEB_DOCUMENTATION_LINK || ''
         ),
@@ -388,6 +391,9 @@ module.exports = (env, args) => {
           ),
           'process.env.COMPASS_WEB_DIRECT_CONNECTION': JSON.stringify(
             enableDirectConnection.toString()
+          ),
+          'process.env.COMPASS_WEB_APP_NAME': JSON.stringify(
+            process.env.COMPASS_WEB_APP_NAME || 'Compass Web'
           ),
           'process.env.COMPASS_WEB_DOCUMENTATION_LINK': JSON.stringify(
             process.env.COMPASS_WEB_DOCUMENTATION_LINK || ''
