@@ -1,0 +1,24 @@
+FROM alpine AS builder
+RUN apk add gcc musl-dev make perl
+RUN wget https://busybox.net/downloads/busybox-1.37.0.tar.bz2 \
+  && tar xf busybox-1.37.0.tar.bz2 \
+  && mv /busybox-1.37.0 /busybox
+
+WORKDIR /busybox
+COPY httpd/.config .config
+RUN make && make install
+
+RUN adduser -D -u 4770 static
+
+FROM scratch
+EXPOSE 80
+
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /busybox/_install/bin/busybox /
+
+USER static
+WORKDIR /home/static
+
+COPY --chown=4770:4770 dist/ ./
+ENTRYPOINT ["/busybox"]
+CMD ["httpd", "-f", "-v"]
